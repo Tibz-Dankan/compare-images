@@ -1,0 +1,33 @@
+# Compiled Object files, Static and Dynamic libs (Shared Objects)
+*.o
+*.a
+*.so
+
+# Folders
+_bin/
+pkg/
+_vendor/
+/dist/
+
+# Executables
+*.exe
+*.out
+
+# Log files
+*.log
+
+# Dependency directories
+vendor/
+
+# Output of the go coverage tool
+*.coverprofile
+
+# Compiled Go files
+*.test
+*.prof
+
+# Output of go tool trace
+*.trace
+
+# Environment file
+.env
