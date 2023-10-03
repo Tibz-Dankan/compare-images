@@ -3,17 +3,15 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"image"
+	"io"
 	"log"
 	"mime/multipart"
 	"net/http"
-	"path/filepath"
-	"strings"
+	"os"
 
-	"github.com/corona10/goimagehash"
+	"github.com/vitali-fedulov/images3"
 )
 
-// Response represents the JSON response.
 type Response struct {
 	Similar bool `json:"similar"`
 }
@@ -31,8 +29,7 @@ func CompareImages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the uploaded files
-	file1, fileHeader1, err := r.FormFile("image1")
+	file1, _, err := r.FormFile("image1")
 	if err != nil {
 		http.Error(w, "Missing image1 field in the form", http.StatusBadRequest)
 		log.Println(err)
@@ -40,7 +37,7 @@ func CompareImages(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file1.Close()
 
-	file2, fileHeader2, err := r.FormFile("image2")
+	file2, _, err := r.FormFile("image2")
 	if err != nil {
 		http.Error(w, "Missing image2 field in the form", http.StatusBadRequest)
 		log.Println(err)
@@ -48,39 +45,9 @@ func CompareImages(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file2.Close()
 
-	// Check file extensions
-	if !isValidImageType(fileHeader1.Filename) || !isValidImageType(fileHeader2.Filename) {
-		http.Error(w, "Invalid image file type. Supported types: .png and .jpeg", http.StatusBadRequest)
-		return
-	}
 
-	fmt.Println("About to 2 calc hash 1")
-
-	// Calculate and compare pHash values
-	hash1, err := calculateHash(file1)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		log.Println(err)
-		return
-	}
-
-	fmt.Println("About to 2 calc hash 2")
-
-
-	hash2, err := calculateHash(file2)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		log.Println(err)
-		return
-	}
-
-	fmt.Println("About to compare hashes")
-
-
-	// Compare the pHash values
-	similar := compareHashes(hash1, hash2)
-
-	// Send JSON response
+	similar := ImagesSimilar(file1, file2)
+	
 	response := Response{Similar: similar}
 	jsonResponse, err := json.Marshal(response)
 	if err != nil {
@@ -94,63 +61,49 @@ func CompareImages(w http.ResponseWriter, r *http.Request) {
 	w.Write(jsonResponse)
 }
 
-// func calculateHash(file multipart.File) (string, error) {
-// 	img, _, err := image.Decode(file)
-// 	if err != nil {
-// 		log.Println(err)
-// 		return "", err
-// 	}
 
-// 	hash, err := goimagehash.DifferenceHash(img)
-// 	if err != nil {
-// 		log.Println(err)
-// 		return "", err
-// 	}
+func ImagesSimilar(image1 multipart.File, image2 multipart.File) bool {
+	imageFile1 := writeImageToDisk(image1, "1.jpg")
+	imageFile2 := writeImageToDisk(image2, "2.jpg")
 
-// 	return hash.ToString(), nil
-// }
+	img1, _ := images3.Open("1.jpg")
+	img2, _ := images3.Open("2.jpg")
 
-// func calculateHash(file multipart.File) (string, error) {
-// 	// Try to decode the image using JPEG format
-// 	img, _, err := image.Decode(file)
-// 	if err != nil {
-// 		// If JPEG format decoding fails, try PNG format
-// 		file.Seek(0, io.SeekStart) // Reset file reader position
-// 		img, _, err = image.Decode(file)
-// 		if err != nil {
-// 			return "", err
-// 		}
-// 	}
+	icon1 := images3.Icon(img1, "1.jpg")
+	icon2 := images3.Icon(img2, "2.jpg")
 
-// 	hash, err := goimagehash.DifferenceHash(img)
-// 	if err != nil {
-// 		return "", err
-// 	}
+	removeImageFromDisk(imageFile1, "1.jpg")
+	removeImageFromDisk(imageFile2, "2.jpg")
 
-// 	return hash.ToString(), nil
-// }
-
-func calculateHash(file multipart.File) (string, error) {
-	img, _, err := image.Decode(file)
-	if err != nil {
-		return "", fmt.Errorf("error decoding image: %v", err)
+	if images3.Similar(icon1, icon2) {
+		fmt.Println("Images are similar.")
+		return true
 	}
-
-	hash, err := goimagehash.DifferenceHash(img)
-	if err != nil {
-		return "", fmt.Errorf("error calculating hash: %v", err)
-	}
-
-	return hash.ToString(), nil
+	   fmt.Println("Images are distinct.")
+	return false
 }
 
 
+func writeImageToDisk(image multipart.File, imageName string) *os.File{
+	imageFile, err := os.Create(imageName)
+	if err != nil {
+		fmt.Println("Error creating file 1.jpg:", err)
+		// return error message
+	}
+	defer imageFile.Close()
 
-func compareHashes(hash1, hash2 string) bool {
-	return strings.Compare(hash1, hash2) == 0
+	_, err = io.Copy(imageFile, image)
+	if err != nil {
+		fmt.Println("Error copying image1:", err)
+		// return error message
+	}
+
+	return imageFile
 }
 
-func isValidImageType(filename string) bool {
-	extension := strings.ToLower(filepath.Ext(filename))
-	return extension == ".png" || extension == ".jpeg" || extension == ".jpg"
+func removeImageFromDisk(imageFile *os.File, imageName string){
+	defer func() {
+		imageFile.Close()
+		os.Remove(imageName) 
+	}()
 }
